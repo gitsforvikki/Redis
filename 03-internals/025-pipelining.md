@@ -12,18 +12,18 @@ Suppose your Node.js API needs 100 independent Redis values.
 
 A simple loop can send one command, wait for its reply, and then send the next:
 
-\`\`\`text
+```text
 GET key:1 -> wait
 GET key:2 -> wait
 ...
 GET key:100 -> wait
-\`\`\`
+```
 
 Even when Redis executes each command quickly, network round-trip time (RTT) accumulates.
 
 If one sequential request/response takes roughly 2 ms, 100 commands can take roughly 200 ms **just from round-trip delays**. This is an illustration, not a Redis performance guarantee.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant App as Node.js API
     participant R as Redis
@@ -33,13 +33,13 @@ sequenceDiagram
     R-->>App: value 2
     App->>R: GET key:3
     R-->>App: value 3
-\`\`\`
+```
 
 ## 2. What is pipelining?
 
 **Pipelining** means sending multiple Redis commands without waiting for each individual response first. Redis processes commands and returns replies in the corresponding order on the connection.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant App as Node.js API
     participant R as Redis
@@ -49,7 +49,7 @@ sequenceDiagram
     R-->>App: value 1
     R-->>App: value 2
     R-->>App: value 3
-\`\`\`
+```
 
 The benefit comes primarily from **reducing round-trip waiting** and improving throughput, not from making every Redis command internally faster.
 
@@ -68,12 +68,12 @@ Redis commands in a pipeline are still executed according to Redis's normal comm
 
 Without pipelining:
 
-\`\`\`redis
+```redis
 SET product:101:name Keyboard
 SET product:102:name Mouse
 GET product:101:name
 GET product:102:name
-\`\`\`
+```
 
 If sent through separate sequential network requests, each command can require another round trip.
 
@@ -85,15 +85,15 @@ The logical results are unchanged. Only the communication pattern differs.
 
 Install:
 
-\`\`\`bash
+```bash
 npm install redis
-\`\`\`
+```
 
-Use ESM with \`"type": "module"\`.
+Use ESM with `"type": "module"`.
 
 ### Sequential version
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient();
@@ -103,20 +103,20 @@ await redis.connect();
 
 try {
   for (let i = 1; i <= 100; i++) {
-    await redis.set(\`demo:sequential:\${i}\`, String(i));
+    await redis.set(`demo:sequential:\${i}`, String(i));
   }
 } finally {
   await redis.quit();
 }
-\`\`\`
+```
 
-Each \`await\` waits before the next command is issued.
+Each `await` waits before the next command is issued.
 
 ### Auto-pipelining in node-redis
 
-Modern \`redis\` (node-redis) can automatically pipeline commands issued in the same event-loop tick.
+Modern `redis` (node-redis) can automatically pipeline commands issued in the same event-loop tick.
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient();
@@ -129,7 +129,7 @@ try {
 
   for (let i = 1; i <= 100; i++) {
     operations.push(
-      redis.set(\`demo:pipeline:\${i}\`, String(i)),
+      redis.set(`demo:pipeline:\${i}`, String(i)),
     );
   }
 
@@ -138,17 +138,17 @@ try {
 } finally {
   await redis.quit();
 }
-\`\`\`
+```
 
 Here the commands are issued before awaiting their results, enabling node-redis auto-pipelining when they are scheduled in the same tick.
 
-**Important:** \`Promise.all\` itself is not a Redis transaction, nor does it guarantee that every Redis client library pipelines commands the same way. Check your installed client version.
+**Important:** `Promise.all` itself is not a Redis transaction, nor does it guarantee that every Redis client library pipelines commands the same way. Check your installed client version.
 
 ## 6. Explicit non-transactional batching with node-redis
 
-For a sequence of commands without transaction semantics, modern node-redis supports \`multi().execAsPipeline()\`.
+For a sequence of commands without transaction semantics, modern node-redis supports `multi().execAsPipeline()`.
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient();
@@ -169,11 +169,11 @@ try {
 } finally {
   await redis.quit();
 }
-\`\`\`
+```
 
 **Do not confuse**:
-- \`execAsPipeline()\`: batch commands **without** \`MULTI/EXEC\` transaction semantics.
-- \`exec()\`: execute a \`MULTI/EXEC\` transaction.
+- `execAsPipeline()`: batch commands **without** `MULTI/EXEC` transaction semantics.
+- `exec()`: execute a `MULTI/EXEC` transaction.
 
 API names can vary by client major version. Check your installed node-redis documentation.
 
@@ -181,17 +181,17 @@ API names can vary by client major version. Check your installed node-redis docu
 
 Redis already has commands that work with multiple keys.
 
-\`\`\`redis
+```redis
 MSET product:101:name Keyboard product:102:name Mouse
 MGET product:101:name product:102:name
-\`\`\`
+```
 
-If you only need multiple String reads or writes, \`MGET\`/\`MSET\` may be simpler than sending many individual \`GET\`/\`SET\` commands.
+If you only need multiple String reads or writes, `MGET`/`MSET` may be simpler than sending many individual `GET`/`SET` commands.
 
 | Requirement | Useful approach |
 | --- | --- |
-| Read many String keys | \`MGET\` |
-| Write many String keys | \`MSET\` |
+| Read many String keys | `MGET` |
+| Write many String keys | `MSET` |
 | Execute different command types efficiently | Pipeline |
 | All-or-nothing execution grouping | Transaction, with caveats |
 | Conditional multi-step logic | WATCH or Lua/Redis Functions |
@@ -211,7 +211,7 @@ This is the most important distinction.
 | Atomic read-modify-write with conditions | No | Requires WATCH or scripting as appropriate |
 | Lower network overhead | Often | Often |
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Need many Redis commands"] --> B{"Must commands run without interleaving?"}
     B -->|"No"| C["Pipeline"]
@@ -219,19 +219,19 @@ flowchart TD
     D --> E{"Need conditional update based on a read?"}
     E -->|"Yes"| F["WATCH or Lua/Function"]
     E -->|"No"| G["Transaction may suffice"]
-\`\`\`
+```
 
 ### A pipeline does not prevent race conditions
 
 Suppose two API servers each run:
 
-\`\`\`text
+```text
 GET stock
 if stock > 0:
     DECR stock
-\`\`\`
+```
 
-Putting \`GET\` and \`DECR\` in a pipeline does not solve the race: the decision happens in application code and can become stale.
+Putting `GET` and `DECR` in a pipeline does not solve the race: the decision happens in application code and can become stale.
 
 Use a suitable atomic server-side operation or script, with correct inventory invariants.
 
@@ -243,13 +243,13 @@ If a command fails, the pipeline does **not** automatically undo earlier success
 
 Example:
 
-\`\`\`redis
+```redis
 SET demo:mixed hello
 INCR demo:mixed
 SET demo:after success
-\`\`\`
+```
 
-The \`INCR\` fails because \`hello\` is not an integer, but the earlier and later valid commands can still execute.
+The `INCR` fails because `hello` is not an integer, but the earlier and later valid commands can still execute.
 
 **Production rule:** Check individual results/errors, not only whether the network operation completed.
 
@@ -265,7 +265,7 @@ A pipeline of 10 commands may reduce network overhead. A pipeline of 1,000,000 c
 
 **Use bounded batches**, such as 100–1,000 commands as a starting point for testing, not as a universal optimum.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["100,000 operations"] --> B["Batch 1"]
     A --> C["Batch 2"]
@@ -275,11 +275,11 @@ flowchart LR
     C --> R
     D --> R
     E --> R
-\`\`\`
+```
 
 ### Bounded batch example
 
-\`\`\`js
+```js
 async function writeInBatches(redis, entries, batchSize = 200) {
   for (let start = 0; start < entries.length; start += batchSize) {
     const batch = entries.slice(start, start + batchSize);
@@ -289,7 +289,7 @@ async function writeInBatches(redis, entries, batchSize = 200) {
     );
   }
 }
-\`\`\`
+```
 
 This limits the number of simultaneously issued commands. Whether the client pipelines them depends on its implementation and scheduling.
 
@@ -299,14 +299,14 @@ Measure **throughput and latency**, not only total elapsed time.
 
 Example with Redis's benchmarking tool:
 
-\`\`\`bash
+```bash
 redis-benchmark -t set,get -n 100000 -c 50 -P 1
 redis-benchmark -t set,get -n 100000 -c 50 -P 16
-\`\`\`
+```
 
-- \`-n\`: total requests.
-- \`-c\`: concurrent clients.
-- \`-P\`: pipeline depth.
+- `-n`: total requests.
+- `-c`: concurrent clients.
+- `-P`: pipeline depth.
 
 These are learning experiments. Use a disposable server; benchmarks write test data and can consume substantial resources.
 
@@ -324,14 +324,14 @@ These are learning experiments. Use a disposable server; benchmarks write test d
 
 Your API needs several independent cached counts:
 
-\`\`\`text
+```text
 dashboard:42:applied
 dashboard:42:interviews
 dashboard:42:offers
 dashboard:42:rejections
-\`\`\`
+```
 
-For String values, \`MGET\` is an excellent starting point.
+For String values, `MGET` is an excellent starting point.
 
 ### CodeBuddy profile page
 
@@ -357,11 +357,11 @@ The client may not know which commands were executed.
 
 | Operation | Retry behavior |
 | --- | --- |
-| \`SET key sameValue\` | Often idempotent |
-| \`DEL key\` | Usually idempotent for intended final state |
-| \`INCR counter\` | Not idempotent |
-| \`LPUSH queue item\` | May create duplicates |
-| \`XADD stream * ...\` | May create duplicate events |
+| `SET key sameValue` | Often idempotent |
+| `DEL key` | Usually idempotent for intended final state |
+| `INCR counter` | Not idempotent |
+| `LPUSH queue item` | May create duplicates |
+| `XADD stream * ...` | May create duplicate events |
 
 For business-critical writes, use stable event IDs, idempotency keys, or a database transaction/outbox as appropriate.
 
@@ -372,27 +372,27 @@ For business-critical writes, use stable event IDs, idempotency keys, or a datab
 3. Assuming a pipeline automatically rolls back on errors.
 4. Using enormous unbounded pipelines.
 5. Ignoring individual command errors.
-6. Using sequential \`await\` and expecting auto-pipelining.
-7. Assuming \`Promise.all\` guarantees pipelining in every client.
+6. Using sequential `await` and expecting auto-pipelining.
+7. Assuming `Promise.all` guarantees pipelining in every client.
 8. Ignoring Redis Cluster routing and hash slots.
 9. Retrying non-idempotent batches blindly.
 10. Measuring only throughput while ignoring tail latency.
-11. Using a pipeline when \`MGET\` would be simpler.
+11. Using a pipeline when `MGET` would be simpler.
 12. Assuming network failure means no command executed.
 
 ## 15. Exercises
 
 1. Explain RTT and why sequential requests add latency.
 2. Draw a sequential vs pipelined request timeline.
-3. Write 100 keys with sequential \`await\`.
-4. Repeat using \`Promise.all\` and node-redis auto-pipelining.
-5. Test \`execAsPipeline()\` in your installed node-redis version.
-6. Compare \`MGET\` with multiple \`GET\` calls.
+3. Write 100 keys with sequential `await`.
+4. Repeat using `Promise.all` and node-redis auto-pipelining.
+5. Test `execAsPipeline()` in your installed node-redis version.
+6. Compare `MGET` with multiple `GET` calls.
 7. Demonstrate that one failed command does not roll back other pipeline commands.
-8. Use \`redis-benchmark\` with \`-P 1\` and \`-P 16\`.
+8. Use `redis-benchmark` with `-P 1` and `-P 16`.
 9. Create bounded batches for 10,000 cache entries.
-10. Explain why retrying \`INCR\` after a timeout can overcount.
-11. Design a dashboard read that mixes \`HGET\`, \`SCARD\`, and \`GET\`.
+10. Explain why retrying `INCR` after a timeout can overcount.
+11. Design a dashboard read that mixes `HGET`, `SCARD`, and `GET`.
 12. Explain why pipelining does not fix a stock decrement race.
 
 ## 16. Interview questions
@@ -424,8 +424,8 @@ For business-critical writes, use stable event IDs, idempotency keys, or a datab
 - [ ] Pipelining vs parallelism
 - [ ] Sequential vs concurrent command issuance
 - [ ] node-redis auto-pipelining
-- [ ] \`execAsPipeline()\`
-- [ ] \`MGET\`/\`MSET\`
+- [ ] `execAsPipeline()`
+- [ ] `MGET`/`MSET`
 - [ ] Pipeline vs transactions
 - [ ] Error handling
 - [ ] Bounded batches
