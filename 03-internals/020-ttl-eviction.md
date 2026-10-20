@@ -14,14 +14,14 @@ These two mechanisms both remove keys, but for **different reasons**.
 
 **Eviction:** Remove keys according to a memory policy when Redis needs to free memory to satisfy its configured memory limit.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Redis key"] --> B{"Has expiration?"}
     B -->|"Yes, deadline reached"| C["Expired key removed"]
     B -->|"No or not yet"| D{"Memory pressure?"}
     D -->|"Yes and policy allows"| E["Key may be evicted"]
     D -->|"No"| F["Key remains"]
-\`\`\`
+```
 
 A key can be:
 - **Expired** even if plenty of memory is available.
@@ -35,17 +35,17 @@ A key can be:
 
 ### SET with EX — seconds
 
-\`\`\`redis
+```redis
 SET cache:product:101 "{\"name\":\"Keyboard\"}" EX 600
-\`\`\`
+```
 
 The key expires after 600 seconds (10 minutes).
 
 ### SET with PX — milliseconds
 
-\`\`\`redis
+```redis
 SET otp:demo:42 "123456" PX 30000
-\`\`\`
+```
 
 The key expires after 30,000 milliseconds (30 seconds).
 
@@ -53,23 +53,23 @@ The key expires after 30,000 milliseconds (30 seconds).
 
 ### EXPIRE — set TTL on an existing key
 
-\`\`\`redis
+```redis
 SET demo:temporary hello
 EXPIRE demo:temporary 60
-\`\`\`
+```
 
 ### PEXPIRE — milliseconds
 
-\`\`\`redis
+```redis
 PEXPIRE demo:temporary 1500
-\`\`\`
+```
 
 ### Absolute expiration
 
-\`\`\`redis
+```redis
 EXPIREAT demo:temporary 1893456000
 PEXPIREAT demo:temporary 1893456000000
-\`\`\`
+```
 
 These use absolute Unix timestamps in seconds or milliseconds, respectively.
 
@@ -77,53 +77,53 @@ These use absolute Unix timestamps in seconds or milliseconds, respectively.
 
 ## 3. Read TTL and understand return values
 
-\`\`\`redis
+```redis
 TTL demo:temporary
 PTTL demo:temporary
-\`\`\`
+```
 
-- \`TTL\`: remaining lifetime in seconds.
-- \`PTTL\`: remaining lifetime in milliseconds.
+- `TTL`: remaining lifetime in seconds.
+- `PTTL`: remaining lifetime in milliseconds.
 
 Both use special values:
 
 | Result | Meaning |
 | --- | --- |
 | Positive integer | Remaining lifetime |
-| \`-1\` | Key exists, but has no expiration |
-| \`-2\` | Key does not exist |
+| `-1` | Key exists, but has no expiration |
+| `-2` | Key does not exist |
 
 Try:
 
-\`\`\`redis
+```redis
 DEL demo:missing
 TTL demo:missing
 SET demo:persistent value
 TTL demo:persistent
 EXPIRE demo:persistent 60
 TTL demo:persistent
-\`\`\`
+```
 
 ### Expiration timestamps
 
 Modern Redis supports:
 
-\`\`\`redis
+```redis
 EXPIRETIME demo:temporary
 PEXPIRETIME demo:temporary
-\`\`\`
+```
 
 These return the configured absolute expiration time in seconds or milliseconds, with special values for missing or persistent keys.
 
 ## 4. PERSIST — remove a TTL
 
-\`\`\`redis
+```redis
 SET demo:remember-me yes EX 60
 PERSIST demo:remember-me
 TTL demo:remember-me
-\`\`\`
+```
 
-Expected TTL: \`-1\`.
+Expected TTL: `-1`.
 
 The key now has no expiration.
 
@@ -131,32 +131,32 @@ The key now has no expiration.
 
 ## 5. A very common trap: SET resets expiration
 
-\`\`\`redis
+```redis
 SET demo:token abc EX 60
 TTL demo:token
 SET demo:token xyz
 TTL demo:token
-\`\`\`
+```
 
-After the ordinary second \`SET\`, the key is persistent, so TTL returns \`-1\`.
+After the ordinary second `SET`, the key is persistent, so TTL returns `-1`.
 
 ### Preserve TTL with KEEPTTL
 
-\`\`\`redis
+```redis
 SET demo:token abc EX 60
 SET demo:token xyz KEEPTTL
 TTL demo:token
-\`\`\`
+```
 
 ### Overwrite and set a fresh TTL
 
-\`\`\`redis
+```redis
 SET demo:token xyz EX 60
-\`\`\`
+```
 
 ### Updating data without removing key TTL
 
-Commands such as \`INCR\`, \`HSET\`, and \`LPUSH\` normally preserve an existing key expiration. A command that replaces the key's entire value, such as plain \`SET\`, generally clears it.
+Commands such as `INCR`, `HSET`, and `LPUSH` normally preserve an existing key expiration. A command that replaces the key's entire value, such as plain `SET`, generally clears it.
 
 **Always test TTL behavior for the exact commands you use.**
 
@@ -164,24 +164,24 @@ Commands such as \`INCR\`, \`HSET\`, and \`LPUSH\` normally preserve an existing
 
 Modern Redis supports conditional expiration updates.
 
-\`\`\`redis
+```redis
 SET demo:conditional hello
 EXPIRE demo:conditional 60 NX
-\`\`\`
+```
 
-- \`NX\`: set expiration only if key has no existing expiration.
-- \`XX\`: set expiration only if key already has expiration.
-- \`GT\`: set only if new deadline is later than current deadline.
-- \`LT\`: set only if new deadline is earlier than current deadline.
+- `NX`: set expiration only if key has no existing expiration.
+- `XX`: set expiration only if key already has expiration.
+- `GT`: set only if new deadline is later than current deadline.
+- `LT`: set only if new deadline is earlier than current deadline.
 
 Examples:
 
-\`\`\`redis
+```redis
 EXPIRE demo:conditional 120 GT
 EXPIRE demo:conditional 30 LT
-\`\`\`
+```
 
-**Subtlety:** For \`GT\` and \`LT\`, a key with no TTL is treated as having an infinite expiration deadline. Thus, \`GT\` does not add an expiration to a persistent key, while \`LT\` can.
+**Subtlety:** For `GT` and `LT`, a key with no TTL is treated as having an infinite expiration deadline. Thus, `GT` does not add an expiration to a persistent key, while `LT` can.
 
 Version support matters: verify your Redis server version before using these options.
 
@@ -199,23 +199,23 @@ When a client accesses a key, Redis can check whether it has expired and treat i
 
 Redis periodically samples keys with expiration and removes expired ones to reclaim memory even if nobody reads them.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Key reaches deadline"] --> B{"Key accessed?"}
     B -->|"Yes"| C["Passive expiration check"]
     B -->|"No"| D["Active expiration cycle"]
     C --> E["Key removed / treated absent"]
     D --> E
-\`\`\`
+```
 
 **Important:** The logical expiration deadline is not a promise that memory is reclaimed at the exact millisecond. Expired keys can occupy memory briefly before active cleanup.
 
 ## 8. Expiration is key-level, not normally member-level
 
-\`\`\`redis
+```redis
 SADD saved:jobs job:101 job:102
 EXPIRE saved:jobs 60
-\`\`\`
+```
 
 After expiration, the **entire Set** disappears.
 
@@ -255,9 +255,9 @@ These are **illustrative**, not universal recommendations. TTL must follow the a
 
 A key expires a fixed duration after creation.
 
-\`\`\`redis
+```redis
 SET session:demo active EX 1800
-\`\`\`
+```
 
 Reading it does not automatically extend the TTL.
 
@@ -265,13 +265,13 @@ Reading it does not automatically extend the TTL.
 
 Every qualifying user activity extends the deadline:
 
-\`\`\`redis
+```redis
 EXPIRE session:demo 1800
-\`\`\`
+```
 
 This must be done explicitly in application logic.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant U as User
     participant API as API
@@ -281,7 +281,7 @@ sequenceDiagram
     R-->>API: Valid
     API->>R: EXPIRE session 1800
     API-->>U: Response
-\`\`\`
+```
 
 **Security trade-off:** Sliding expiration can keep a session alive indefinitely if activity continues. Many applications also enforce an **absolute maximum session lifetime**.
 
@@ -293,12 +293,12 @@ Suppose 100,000 cache entries are created at deployment and all expire after exa
 
 They may expire together, causing many cache misses and a database traffic spike.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["100k keys expire together"] --> B["Cache misses spike"]
     B --> C["Database overloaded"]
     C --> D["API latency rises"]
-\`\`\`
+```
 
 Add **TTL jitter**: a small randomized offset.
 
@@ -307,11 +307,11 @@ Example:
 - Jitter: 0–120 seconds.
 - Effective TTL: 600–720 seconds.
 
-\`\`\`js
+```js
 function cacheTtlSeconds(base = 600, jitter = 120) {
   return base + Math.floor(Math.random() * (jitter + 1));
 }
-\`\`\`
+```
 
 **Important:** Randomness changes freshness bounds. Choose jitter only if the maximum staleness is acceptable.
 
@@ -323,30 +323,30 @@ Eviction occurs when Redis is configured with a memory limit and a policy that p
 
 The central configuration is:
 
-\`\`\`text
+```text
 maxmemory
 maxmemory-policy
-\`\`\`
+```
 
 Inspect:
 
-\`\`\`redis
+```redis
 CONFIG GET maxmemory
 CONFIG GET maxmemory-policy
 INFO memory
 INFO stats
-\`\`\`
+```
 
-**Important:** \`maxmemory\` is a Redis-managed memory threshold, not a perfect process RSS or container memory cap. Allocator overhead, fragmentation, replication buffers, and other memory can affect actual process usage.
+**Important:** `maxmemory` is a Redis-managed memory threshold, not a perfect process RSS or container memory cap. Allocator overhead, fragmentation, replication buffers, and other memory can affect actual process usage.
 
 ## 13. maxmemory — define the memory limit
 
 Example configuration:
 
-\`\`\`conf
+```conf
 maxmemory 512mb
 maxmemory-policy allkeys-lru
-\`\`\`
+```
 
 This tells Redis to target a 512 MB limit for eviction decisions and to choose eviction candidates using the allkeys-lru policy.
 
@@ -354,9 +354,9 @@ This tells Redis to target a 512 MB limit for eviction decisions and to choose e
 
 Do **not** blindly run:
 
-\`\`\`redis
+```redis
 CONFIG SET maxmemory 512mb
-\`\`\`
+```
 
 against a production instance. Changing the limit may immediately trigger heavy eviction or cause writes to fail, depending on the policy and workload.
 
@@ -364,7 +364,7 @@ For learning, use a disposable local Redis instance or container.
 
 ### Container sizing
 
-If a container has a 1 GB memory limit, setting \`maxmemory 1gb\` is risky because Redis needs memory beyond the dataset for internal structures and buffers.
+If a container has a 1 GB memory limit, setting `maxmemory 1gb` is risky because Redis needs memory beyond the dataset for internal structures and buffers.
 
 Reserve headroom based on measured workload, fragmentation, persistence, replication, and operational behavior.
 
@@ -372,22 +372,22 @@ Reserve headroom based on measured workload, fragmentation, persistence, replica
 
 | Policy | Eligible keys | How candidates are chosen |
 | --- | --- | --- |
-| \`noeviction\` | None | Writes that need additional memory can fail |
-| \`allkeys-lru\` | All keys | Approximate least recently used |
-| \`volatile-lru\` | Keys with TTL | Approximate least recently used |
-| \`allkeys-lfu\` | All keys | Approximate least frequently used |
-| \`volatile-lfu\` | Keys with TTL | Approximate least frequently used |
-| \`allkeys-random\` | All keys | Random |
-| \`volatile-random\` | Keys with TTL | Random |
-| \`volatile-ttl\` | Keys with TTL | Prefer keys with shorter remaining TTL |
+| `noeviction` | None | Writes that need additional memory can fail |
+| `allkeys-lru` | All keys | Approximate least recently used |
+| `volatile-lru` | Keys with TTL | Approximate least recently used |
+| `allkeys-lfu` | All keys | Approximate least frequently used |
+| `volatile-lfu` | Keys with TTL | Approximate least frequently used |
+| `allkeys-random` | All keys | Random |
+| `volatile-random` | Keys with TTL | Random |
+| `volatile-ttl` | Keys with TTL | Prefer keys with shorter remaining TTL |
 
 **Important:** Redis LRU and LFU eviction are approximate algorithms, not exact full rankings of every key.
 
 ### noeviction
 
-\`\`\`conf
+```conf
 maxmemory-policy noeviction
-\`\`\`
+```
 
 Redis does not evict keys to free space. Commands that require more memory may fail with an OOM-related error when the configured limit is reached. Some operations may still be allowed; behavior depends on the command and server state.
 
@@ -395,9 +395,9 @@ Redis does not evict keys to free space. Commands that require more memory may f
 
 ### allkeys-lru
 
-\`\`\`conf
+```conf
 maxmemory-policy allkeys-lru
-\`\`\`
+```
 
 Redis may evict any key, favoring those estimated to have been used least recently.
 
@@ -405,9 +405,9 @@ Redis may evict any key, favoring those estimated to have been used least recent
 
 ### allkeys-lfu
 
-\`\`\`conf
+```conf
 maxmemory-policy allkeys-lfu
-\`\`\`
+```
 
 Redis estimates access frequency and prefers evicting less frequently used keys.
 
@@ -427,7 +427,7 @@ Prefers keys nearer their expiration among TTL-bearing keys.
 
 ## 15. Choosing an eviction policy
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["What does Redis store?"] --> B{"Only rebuildable cache?"}
     B -->|"Yes"| C["Consider allkeys-lru / allkeys-lfu"]
@@ -437,15 +437,15 @@ flowchart TD
     C --> G["Load-test, monitor hit rate and evictions"]
     E --> G
     F --> G
-\`\`\`
+```
 
 ### Recommended mental model
 
-- **Dedicated cache instance:** \`allkeys-lru\` or \`allkeys-lfu\` is often a sensible starting point.
+- **Dedicated cache instance:** `allkeys-lru` or `allkeys-lfu` is often a sensible starting point.
 - **Critical application state:** Avoid casual eviction. Evaluate persistence, capacity, and whether Redis should be the authoritative store.
 - **Mixed cache and critical data:** Prefer separating workloads into different instances or services when feasible.
 
-**Do not choose \`volatile-lru\` just because all your cache keys have TTLs.** A dedicated cache may benefit from allkeys policies even if keys also expire naturally.
+**Do not choose `volatile-lru` just because all your cache keys have TTLs.** A dedicated cache may benefit from allkeys policies even if keys also expire naturally.
 
 ## 16. LRU vs LFU with a real example
 
@@ -468,9 +468,9 @@ Neither is universally best. Workload patterns, cache warm-up, changing populari
 | Mechanism | Trigger | Controlled by | May happen before TTL? |
 | --- | --- | --- | --- |
 | Expiration | Expiration deadline | TTL | Not applicable |
-| Eviction | Memory pressure | \`maxmemory-policy\` | Yes |
-| Explicit deletion | Application/admin command | \`DEL\`, \`UNLINK\` | Yes |
-| Flush | Administrative action | \`FLUSHDB\`, \`FLUSHALL\` | Yes |
+| Eviction | Memory pressure | `maxmemory-policy` | Yes |
+| Explicit deletion | Application/admin command | `DEL`, `UNLINK` | Yes |
+| Flush | Administrative action | `FLUSHDB`, `FLUSHALL` | Yes |
 
 ### Important production principle
 
@@ -480,34 +480,34 @@ An eviction policy is not a data-retention guarantee. If data is important, plan
 
 Useful commands:
 
-\`\`\`redis
+```redis
 INFO memory
 INFO stats
 INFO keyspace
 CONFIG GET maxmemory
 CONFIG GET maxmemory-policy
-\`\`\`
+```
 
 Look for:
-- \`used_memory\`
-- \`used_memory_peak\`
-- \`maxmemory\`
-- \`mem_fragmentation_ratio\`
-- \`evicted_keys\`
-- \`expired_keys\`
-- \`keyspace_hits\`
-- \`keyspace_misses\`
+- `used_memory`
+- `used_memory_peak`
+- `maxmemory`
+- `mem_fragmentation_ratio`
+- `evicted_keys`
+- `expired_keys`
+- `keyspace_hits`
+- `keyspace_misses`
 
 **Interpretation:**
-- \`expired_keys\` increases when keys are removed due to expiration.
-- \`evicted_keys\` increases when keys are removed due to memory pressure.
+- `expired_keys` increases when keys are removed due to expiration.
+- `evicted_keys` increases when keys are removed due to memory pressure.
 - Cache hits/misses help assess cache effectiveness, but hit rate alone does not measure all application performance.
 
 ### Approximate hit-rate formula
 
-\`\`\`text
+```text
 hitRate = keyspace_hits / (keyspace_hits + keyspace_misses)
-\`\`\`
+```
 
 This is meaningful only when the denominator is positive. It reflects Redis keyspace access counters, not necessarily your business-level cache hit rate.
 
@@ -517,15 +517,15 @@ Redis can publish notifications about certain key events, including expiration, 
 
 Example configuration for expired-key events:
 
-\`\`\`conf
+```conf
 notify-keyspace-events Ex
-\`\`\`
+```
 
 A subscriber may listen to:
 
-\`\`\`redis
+```redis
 PSUBSCRIBE __keyevent@0__:expired
-\`\`\`
+```
 
 **Critical:** These are Pub/Sub-style notifications, not durable events. They can be missed during disconnection, and expiration notifications are not guaranteed to arrive at the exact expiration deadline.
 
@@ -535,13 +535,13 @@ PSUBSCRIBE __keyevent@0__:expired
 
 Install:
 
-\`\`\`bash
+```bash
 npm install redis
-\`\`\`
+```
 
-Use ESM (\`"type": "module"\`).
+Use ESM (`"type": "module"`).
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient({
@@ -555,7 +555,7 @@ function ttlWithJitter(baseSeconds = 600, jitterSeconds = 120) {
 }
 
 async function cacheCompany(companyId, company) {
-  const key = \`careerloop:dev:company:\${companyId}:cache\`;
+  const key = `careerloop:dev:company:\${companyId}:cache`;
   const ttl = ttlWithJitter();
 
   await redis.set(key, JSON.stringify(company), { EX: ttl });
@@ -563,7 +563,7 @@ async function cacheCompany(companyId, company) {
 }
 
 async function readCompanyCache(companyId) {
-  const key = \`careerloop:dev:company:\${companyId}:cache\`;
+  const key = `careerloop:dev:company:\${companyId}:cache`;
   const raw = await redis.get(key);
   return raw === null ? null : JSON.parse(raw);
 }
@@ -585,7 +585,7 @@ try {
 } finally {
   if (redis.isOpen) await redis.quit();
 }
-\`\`\`
+```
 
 ### What this example does not solve
 
@@ -603,10 +603,10 @@ We will address these in the caching section.
 Suppose:
 - PostgreSQL stores product records.
 - Redis caches product JSON.
-- Redis has \`maxmemory\` and \`allkeys-lru\`.
+- Redis has `maxmemory` and `allkeys-lru`.
 - A popular product key expires or gets evicted.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant U as User
     participant API as API
@@ -619,7 +619,7 @@ sequenceDiagram
     DB-->>API: Product row
     API->>R: SET cache with EX
     API-->>U: Product response
-\`\`\`
+```
 
 **Important:** The API must remain correct even when Redis misses. A cache miss should generally trigger a safe source-of-truth lookup, not an incorrect “product does not exist” response.
 
@@ -628,12 +628,12 @@ sequenceDiagram
 1. Confusing TTL expiration with memory eviction.
 2. Assuming a key survives until TTL ends.
 3. Assuming expired-key memory is reclaimed at the exact deadline.
-4. Forgetting ordinary \`SET\` clears existing TTL.
+4. Forgetting ordinary `SET` clears existing TTL.
 5. Using sliding TTL without an absolute session lifetime.
 6. Assigning the same TTL to huge numbers of keys, causing synchronized misses.
 7. Assuming TTL applies independently to Set members or Stream entries.
-8. Treating \`maxmemory\` as an exact process memory cap.
-9. Choosing \`volatile-*\` without ensuring enough keys have TTLs.
+8. Treating `maxmemory` as an exact process memory cap.
+9. Choosing `volatile-*` without ensuring enough keys have TTLs.
 10. Assuming Redis LRU/LFU are exact algorithms.
 11. Using expired-key Pub/Sub notifications as a durable job scheduler.
 12. Storing irreplaceable data under an eviction policy without a recovery plan.
@@ -644,19 +644,19 @@ sequenceDiagram
 
 Use a disposable local Redis instance.
 
-1. Set a key with \`EX 60\`.
-2. Compare \`TTL\` and \`PTTL\`.
-3. Inspect \`TTL\` for a missing key.
-4. Inspect \`TTL\` for a persistent key.
-5. Remove expiration using \`PERSIST\`.
-6. Demonstrate that ordinary \`SET\` clears TTL.
-7. Repeat using \`KEEPTTL\`.
-8. Test \`EXPIRE NX\`, \`XX\`, \`GT\`, and \`LT\`.
+1. Set a key with `EX 60`.
+2. Compare `TTL` and `PTTL`.
+3. Inspect `TTL` for a missing key.
+4. Inspect `TTL` for a persistent key.
+5. Remove expiration using `PERSIST`.
+6. Demonstrate that ordinary `SET` clears TTL.
+7. Repeat using `KEEPTTL`.
+8. Test `EXPIRE NX`, `XX`, `GT`, and `LT`.
 9. Design a 30-minute sliding session with a 24-hour absolute lifetime.
 10. Add TTL jitter to a Node.js cache helper.
-11. Inspect \`INFO stats\` for expired and evicted keys.
-12. Compare \`allkeys-lru\` and \`allkeys-lfu\` conceptually.
-13. Explain why \`volatile-lru\` can fail when most keys have no TTL.
+11. Inspect `INFO stats` for expired and evicted keys.
+12. Compare `allkeys-lru` and `allkeys-lfu` conceptually.
+13. Explain why `volatile-lru` can fail when most keys have no TTL.
 14. Explain why expired-key notifications cannot guarantee a reminder is sent.
 
 ## 24. Interview questions
@@ -688,19 +688,19 @@ Use a disposable local Redis instance.
 ## 25. Revision checklist
 
 - [ ] TTL vs eviction
-- [ ] \`EX\`, \`PX\`, \`EXPIRE\`, \`PEXPIRE\`
-- [ ] \`EXPIREAT\`, \`PEXPIREAT\`
-- [ ] \`TTL\`, \`PTTL\`, \`PERSIST\`
-- [ ] \`KEEPTTL\`
-- [ ] \`EXPIRE NX/XX/GT/LT\`
+- [ ] `EX`, `PX`, `EXPIRE`, `PEXPIRE`
+- [ ] `EXPIREAT`, `PEXPIREAT`
+- [ ] `TTL`, `PTTL`, `PERSIST`
+- [ ] `KEEPTTL`
+- [ ] `EXPIRE NX/XX/GT/LT`
 - [ ] Passive and active expiration
 - [ ] Key-level expiration limitations
 - [ ] Fixed vs sliding TTL
 - [ ] TTL jitter
-- [ ] \`maxmemory\` and headroom
+- [ ] `maxmemory` and headroom
 - [ ] All major eviction policies
 - [ ] LRU vs LFU
-- [ ] \`INFO\` metrics
+- [ ] `INFO` metrics
 - [ ] Keyspace notification limitations
 - [ ] Node.js cache implementation
 
