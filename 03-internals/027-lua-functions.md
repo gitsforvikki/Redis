@@ -10,7 +10,7 @@
 
 Imagine a stock counter with 1 item left. Two Node.js servers both read the value, see 1, and try to reserve it. A client-side GET followed by DECR can oversell.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant A as API A
     participant R as Redis
@@ -19,24 +19,24 @@ sequenceDiagram
     B->>R: GET stock -> 1
     A->>R: DECR stock -> 0
     B->>R: DECR stock -> -1
-\`\`\`
+```
 
 A Redis Lua script can **check the value and update it within one atomic server-side execution**, without another client's command interleaving.
 
-**Important:** First prefer a single built-in Redis command when possible (\`INCR\`, \`SET NX EX\`, \`HINCRBY\`). Use a script when the logic genuinely requires several dependent operations.
+**Important:** First prefer a single built-in Redis command when possible (`INCR`, `SET NX EX`, `HINCRBY`). Use a script when the logic genuinely requires several dependent operations.
 
 ## 2. How Redis scripting works
 
 The application sends Lua source and parameters. Redis executes the script server-side. For normal write-capable scripts, other clients' commands do not interleave during its execution.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Node.js"] -->|"EVAL script + keys + args"| B["Redis Lua engine"]
     B --> C["Read keys"]
     C --> D["Validate conditions"]
     D --> E["Write keys"]
     E --> F["Return result"]
-\`\`\`
+```
 
 Benefits:
 - Atomic conditional logic.
@@ -53,58 +53,58 @@ Costs:
 
 Syntax:
 
-\`\`\`redis
+```redis
 EVAL "return redis.call('GET', KEYS[1])" 1 demo:greeting
-\`\`\`
+```
 
 The number after the script is the count of key arguments.
 
 Try:
 
-\`\`\`redis
+```redis
 SET demo:greeting hello
 EVAL "return redis.call('GET', KEYS[1])" 1 demo:greeting
-\`\`\`
+```
 
-Expected reply: \`hello\`.
+Expected reply: `hello`.
 
 ### Understand KEYS and ARGV
 
-\`\`\`redis
+```redis
 EVAL "return {KEYS[1], ARGV[1], ARGV[2]}" 1 demo:key Asha 42
-\`\`\`
+```
 
-- \`KEYS[1]\` = \`demo:key\`.
-- \`ARGV[1]\` = \`Asha\`.
-- \`ARGV[2]\` = \`42\`.
+- `KEYS[1]` = `demo:key`.
+- `ARGV[1]` = `Asha`.
+- `ARGV[2]` = `42`.
 
-**Rule:** Supply all key names as declared key arguments. Do not hide or dynamically construct accessed key names in \`ARGV\`; this matters especially in Redis Cluster.
+**Rule:** Supply all key names as declared key arguments. Do not hide or dynamically construct accessed key names in `ARGV`; this matters especially in Redis Cluster.
 
 ## 4. redis.call vs redis.pcall
 
 Lua scripts use Redis commands through these APIs:
 
-\`\`\`lua
+```lua
 local value = redis.call("GET", KEYS[1])
 return value
-\`\`\`
+```
 
-\`redis.call\` raises a script error when a Redis command fails.
+`redis.call` raises a script error when a Redis command fails.
 
-\`\`\`lua
+```lua
 local result = redis.pcall("INCR", KEYS[1])
 return result
-\`\`\`
+```
 
-\`redis.pcall\` returns an error value that your script can inspect and handle.
+`redis.pcall` returns an error value that your script can inspect and handle.
 
 **Critical:** A Lua script error does **not** roll back earlier writes already executed by the script. Redis scripting provides non-interleaved execution, not SQL-style rollback.
 
 ## 5. Real example: reserve stock without going negative
 
-Create a script named \`reserve-stock.lua\`:
+Create a script named `reserve-stock.lua`:
 
-\`\`\`lua
+```lua
 local stock = tonumber(redis.call("GET", KEYS[1]))
 
 if stock == nil then
@@ -117,21 +117,21 @@ end
 
 redis.call("DECR", KEYS[1])
 return 1
-\`\`\`
+```
 
 Run it:
 
-\`\`\`redis
+```redis
 SET demo:stock 2
 EVAL "local stock = tonumber(redis.call('GET', KEYS[1])); if stock == nil then return redis.error_reply('STOCK_NOT_FOUND_OR_INVALID') end; if stock <= 0 then return 0 end; redis.call('DECR', KEYS[1]); return 1" 1 demo:stock
-\`\`\`
+```
 
 The script returns:
-- \`1\` if one unit was reserved.
-- \`0\` if no stock remains.
+- `1` if one unit was reserved.
+- `0` if no stock remains.
 - An error for missing or invalid stock.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Run script"] --> B["GET stock"]
     B --> C{"Valid positive integer?"}
@@ -139,7 +139,7 @@ flowchart TD
     C -->|"Zero or negative"| E["Return 0"]
     C -->|"Positive"| F["DECR"]
     F --> G["Return 1"]
-\`\`\`
+```
 
 ### Production improvement
 
@@ -151,13 +151,13 @@ Validate that stock is a **safe, nonnegative integer** before using the script a
 
 Install:
 
-\`\`\`bash
+```bash
 npm install redis
-\`\`\`
+```
 
-Use ESM (\`"type": "module"\`).
+Use ESM (`"type": "module"`).
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient({
@@ -165,7 +165,7 @@ const redis = createClient({
 });
 redis.on("error", (err) => console.error("Redis:", err.message));
 
-const reserveStock = \`
+const reserveStock = `
 local stock = tonumber(redis.call("GET", KEYS[1]))
 if stock == nil then
   return redis.error_reply("STOCK_NOT_FOUND_OR_INVALID")
@@ -173,7 +173,7 @@ end
 if stock <= 0 then return 0 end
 redis.call("DECR", KEYS[1])
 return 1
-\`;
+`;
 
 try {
   await redis.connect();
@@ -189,7 +189,7 @@ try {
 } finally {
   if (redis.isOpen) await redis.quit();
 }
-\`\`\`
+```
 
 The Node.js API shown is for modern node-redis. Check your installed major version.
 
@@ -199,28 +199,28 @@ A common requirement is: increment a counter and set an expiration **only on the
 
 A naive implementation:
 
-\`\`\`js
+```js
 await redis.incr(key);
 await redis.expire(key, 60);
-\`\`\`
+```
 
 This resets the TTL on every request, accidentally turning a fixed window into a sliding expiration. A failure between the commands can also leave a counter without expiration.
 
 Lua solution:
 
-\`\`\`lua
+```lua
 local count = redis.call("INCR", KEYS[1])
 if count == 1 then
   redis.call("EXPIRE", KEYS[1], tonumber(ARGV[1]))
 end
 return count
-\`\`\`
+```
 
 Example:
 
-\`\`\`redis
+```redis
 EVAL "local count = redis.call('INCR', KEYS[1]); if count == 1 then redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1])) end; return count" 1 rate:demo 60
-\`\`\`
+```
 
 This is a **fixed-window counter starting with the first request**.
 
@@ -240,29 +240,29 @@ Sending a long script on every request adds network payload overhead.
 
 Redis can identify scripts by SHA-1:
 
-\`\`\`redis
+```redis
 SCRIPT LOAD "return redis.call('GET', KEYS[1])"
-\`\`\`
+```
 
 The command returns a script SHA. Then:
 
-\`\`\`redis
+```redis
 EVALSHA <sha-from-script-load> 1 demo:greeting
-\`\`\`
+```
 
 The Redis server may forget cached scripts after restart, flush, failover, or script-cache eviction behavior depending on version.
 
 ### Handle NOSCRIPT
 
-An application using \`EVALSHA\` should handle \`NOSCRIPT\` by loading or evaluating the script again.
+An application using `EVALSHA` should handle `NOSCRIPT` by loading or evaluating the script again.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["EVALSHA"] --> B{"Script cached?"}
     B -->|"Yes"| C["Execute"]
     B -->|"No / NOSCRIPT"| D["Load or EVAL"]
     D --> C
-\`\`\`
+```
 
 **Do not treat a script SHA as a durable deployment artifact.**
 
@@ -270,13 +270,13 @@ flowchart TD
 
 Useful commands include:
 
-\`\`\`redis
+```redis
 SCRIPT LOAD "return 42"
 SCRIPT EXISTS <sha>
 SCRIPT FLUSH
-\`\`\`
+```
 
-\`SCRIPT FLUSH\` clears cached scripts. Do not use it casually on a shared production instance.
+`SCRIPT FLUSH` clears cached scripts. Do not use it casually on a shared production instance.
 
 Other administrative script commands exist; availability and behavior depend on Redis version.
 
@@ -290,7 +290,7 @@ Other administrative script commands exist; availability and behavior depend on 
 | WATCH + MULTI/EXEC | Optimistic read-modify-write | Conflicts require retries |
 | Lua / Function | Atomic conditional server-side logic | Blocks Redis during execution; complexity |
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Need update"] --> B{"One built-in command?"}
     B -->|"Yes"| C["Use built-in command"]
@@ -299,21 +299,21 @@ flowchart TD
     D -->|"Yes"| F{"Accept client-side retries?"}
     F -->|"Yes"| G["WATCH"]
     F -->|"No"| H["Lua / Redis Function"]
-\`\`\`
+```
 
 ## 11. Important limitation: scripts do not roll back
 
 Consider:
 
-\`\`\`lua
+```lua
 redis.call("SET", KEYS[1], "changed")
 redis.call("INCR", KEYS[2])
 return 1
-\`\`\`
+```
 
-If \`KEYS[2]\` contains text rather than an integer, the \`INCR\` can fail **after** the first \`SET\` succeeded.
+If `KEYS[2]` contains text rather than an integer, the `INCR` can fail **after** the first `SET` succeeded.
 
-The earlier \`SET\` remains.
+The earlier `SET` remains.
 
 **Production rule:** Validate data and possible failure conditions before mutating keys. Design scripts to avoid partial business effects, and use an authoritative transactional store where true rollback is required.
 
@@ -338,16 +338,16 @@ A script that accesses multiple keys in Redis Cluster must follow key-slot routi
 
 Example:
 
-\`\`\`text
+```text
 stock:{product101}:available
 stock:{product101}:reserved
-\`\`\`
+```
 
-Both keys share the \`product101\` hash tag.
+Both keys share the `product101` hash tag.
 
-\`\`\`redis
+```redis
 EVAL "return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2])}" 2 stock:{product101}:available stock:{product101}:reserved
-\`\`\`
+```
 
 **Do not use one global hash tag for every user/product.** That can create a hot slot and undermine Cluster scaling.
 
@@ -359,36 +359,36 @@ Unlike ephemeral script-cache entries, loaded functions are part of Redis's pers
 
 ### Example library
 
-Save this as \`demo-functions.lua\`:
+Save this as `demo-functions.lua`:
 
-\`\`\`lua
+```lua
 #!lua name=demo_lib
 
 redis.register_function("get_value", function(keys, args)
   return redis.call("GET", keys[1])
 end)
-\`\`\`
+```
 
 Load it with a CLI command that supplies the file contents as a single argument, for example:
 
-\`\`\`bash
+```bash
 redis-cli -x FUNCTION LOAD < demo-functions.lua
-\`\`\`
+```
 
 Call the function:
 
-\`\`\`redis
+```redis
 SET demo:greeting hello
 FCALL get_value 1 demo:greeting
-\`\`\`
+```
 
 ### Useful function commands
 
-\`\`\`redis
+```redis
 FUNCTION LIST
 FUNCTION STATS
 FUNCTION DUMP
-\`\`\`
+```
 
 Redis also supports function replacement, restore, and deletion workflows. Treat these as deployment operations, not casual production experiments.
 
@@ -399,7 +399,7 @@ Redis also supports function replacement, restore, and deletion workflows. Treat
 | Definition | Script source or cached SHA | Named library/function |
 | Deployment | Application supplies or loads script | Library loaded to Redis |
 | Persistence | Script cache is not a durable deployment guarantee | Function library participates in Redis persistence/replication |
-| Invocation | \`EVAL\`, \`EVALSHA\` | \`FCALL\`, \`FCALL_RO\` |
+| Invocation | `EVAL`, `EVALSHA` | `FCALL`, `FCALL_RO` |
 | Best fit | Small scripts managed by application | Reusable server-side logic with managed deployment |
 
 **Important:** Function deployment, upgrades, backups, and Cluster rollout need operational planning. Function persistence does not eliminate the possibility of data loss from infrastructure failures.
@@ -408,15 +408,15 @@ Redis also supports function replacement, restore, and deletion workflows. Treat
 
 Modern Redis supports read-only variants for appropriate operations, such as:
 
-\`\`\`redis
+```redis
 EVAL_RO "return redis.call('GET', KEYS[1])" 1 demo:greeting
-\`\`\`
+```
 
 And for read-only registered functions:
 
-\`\`\`redis
+```redis
 FCALL_RO get_value 1 demo:greeting
-\`\`\`
+```
 
 A read-only invocation cannot perform writes. Use it when appropriate for replica/Cluster routing and operational safety, subject to your Redis version.
 
@@ -440,7 +440,7 @@ When a job application moves from Applied to Interview, you may need to update t
 
 ### CodeBuddy: connection request deduplication
 
-\`SET key value NX EX ...\` may already be sufficient to claim an operation ID. Use Lua only when deduplication must be combined with additional Redis mutations.
+`SET key value NX EX ...` may already be sufficient to claim an operation ID. Use Lua only when deduplication must be combined with additional Redis mutations.
 
 ### E-commerce: reservation counters
 
@@ -451,9 +451,9 @@ Use a server-side check-and-decrement when Redis is the coordination layer. For 
 1. Using scripts when a single atomic command would suffice.
 2. Assuming scripts roll back previous writes on error.
 3. Writing unbounded loops that block Redis.
-4. Hiding accessed key names inside \`ARGV\`.
+4. Hiding accessed key names inside `ARGV`.
 5. Ignoring Redis Cluster hash-slot rules.
-6. Treating \`EVALSHA\` as guaranteed to work after restart.
+6. Treating `EVALSHA` as guaranteed to work after restart.
 7. Assuming a successful script also committed PostgreSQL changes.
 8. Using Lua for slow background processing.
 9. Ignoring numeric precision and integer constraints.
@@ -463,18 +463,18 @@ Use a server-side check-and-decrement when Redis is the coordination layer. For 
 
 ## 20. Hands-on exercises
 
-1. Run a simple \`EVAL\` returning a string.
-2. Read one key using \`KEYS[1]\`.
-3. Pass an argument using \`ARGV[1]\`.
+1. Run a simple `EVAL` returning a string.
+2. Read one key using `KEYS[1]`.
+3. Pass an argument using `ARGV[1]`.
 4. Write a stock check-and-decrement script.
 5. Verify stock never goes below zero under concurrent calls.
 6. Write a counter-with-first-expiration script.
-7. Compare \`redis.call\` and \`redis.pcall\`.
+7. Compare `redis.call` and `redis.pcall`.
 8. Demonstrate that a script error does not undo an earlier write.
-9. Load a script and run \`EVALSHA\`.
-10. Explain how to recover from \`NOSCRIPT\`.
+9. Load a script and run `EVALSHA`.
+10. Explain how to recover from `NOSCRIPT`.
 11. Create and call a Redis Function on Redis 7+.
-12. Test a read-only script with \`EVAL_RO\`.
+12. Test a read-only script with `EVAL_RO`.
 13. Explain the Redis Cluster key-slot constraint.
 14. Benchmark a short script against a client-side WATCH loop.
 
