@@ -10,15 +10,15 @@
 
 When you execute:
 
-\`\`\`redis
+```redis
 SET counter 42
 HSET user:42 name Asha city Bengaluru
 SADD tags:42 react nextjs redis
-\`\`\`
+```
 
 Redis exposes **logical types** such as String, Hash, and Set. Internally, Redis can store these values using different **encodings** depending on their size, shape, and server version.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Redis key"] --> B["Logical data type"]
     B --> C["Internal encoding"]
@@ -27,7 +27,7 @@ flowchart TD
     B --> H["Hash"]
     B --> T["Set"]
     B --> Z["Sorted Set"]
-\`\`\`
+```
 
 Why does this matter? Two values with the same logical type may consume very different amounts of memory. Redis chooses representations that trade memory efficiency against operation speed.
 
@@ -37,25 +37,25 @@ Why does this matter? Two values with the same logical type may consume very dif
 
 On a disposable Redis instance:
 
-\`\`\`redis
+```redis
 SET demo:string 42
 OBJECT ENCODING demo:string
 TYPE demo:string
 MEMORY USAGE demo:string
-\`\`\`
+```
 
-- \`TYPE\` reports the logical Redis type.
-- \`OBJECT ENCODING\` reports the internal encoding.
-- \`MEMORY USAGE\` estimates bytes used by the key and value, including relevant overhead.
-- \`INFO memory\` reports server-wide memory metrics.
+- `TYPE` reports the logical Redis type.
+- `OBJECT ENCODING` reports the internal encoding.
+- `MEMORY USAGE` estimates bytes used by the key and value, including relevant overhead.
+- `INFO memory` reports server-wide memory metrics.
 
-\`\`\`redis
+```redis
 INFO memory
 MEMORY STATS
 MEMORY DOCTOR
-\`\`\`
+```
 
-**Caution:** \`MEMORY USAGE\` is a diagnostic measurement, not a precise billing metric or a guarantee of future allocation. Collection sampling can affect estimates; \`MEMORY USAGE key SAMPLES 0\` inspects all nested elements but may cost more.
+**Caution:** `MEMORY USAGE` is a diagnostic measurement, not a precise billing metric or a guarantee of future allocation. Collection sampling can affect estimates; `MEMORY USAGE key SAMPLES 0` inspects all nested elements but may cost more.
 
 ## 3. Redis Strings: integer, embedded, and raw representations
 
@@ -65,13 +65,13 @@ For Strings, you may encounter encodings such as:
 
 | Encoding | General meaning |
 | --- | --- |
-| \`int\` | Integer stored in an optimized representation |
-| \`embstr\` | Small String with compact combined allocation |
-| \`raw\` | General String allocation for larger or modified values |
+| `int` | Integer stored in an optimized representation |
+| `embstr` | Small String with compact combined allocation |
+| `raw` | General String allocation for larger or modified values |
 
 Try:
 
-\`\`\`redis
+```redis
 SET demo:int 100
 OBJECT ENCODING demo:int
 
@@ -80,26 +80,26 @@ OBJECT ENCODING demo:short
 
 SET demo:long "A relatively long text value to inspect in this Redis version"
 OBJECT ENCODING demo:long
-\`\`\`
+```
 
-The exact results and length thresholds are **version-dependent**. Do not hardcode an \`embstr\` cutoff in application logic.
+The exact results and length thresholds are **version-dependent**. Do not hardcode an `embstr` cutoff in application logic.
 
 ### Why integer encoding can be useful
 
 If Redis recognizes a suitable integer value, it can avoid storing the value as a general-purpose byte String.
 
-But not every numeric-looking value is necessarily encoded as \`int\`; formatting and operations matter.
+But not every numeric-looking value is necessarily encoded as `int`; formatting and operations matter.
 
 ### Encoding can change
 
 A String may start in a compact encoding and later be represented differently after modifications.
 
-\`\`\`redis
+```redis
 SET demo:mutable hello
 OBJECT ENCODING demo:mutable
 APPEND demo:mutable world
 OBJECT ENCODING demo:mutable
-\`\`\`
+```
 
 Do not assume that every command preserves the original encoding.
 
@@ -107,18 +107,18 @@ Do not assume that every command preserves the original encoding.
 
 Hashes are useful for storing fields of an object.
 
-\`\`\`redis
+```redis
 HSET demo:user name Asha city Bengaluru role developer
 OBJECT ENCODING demo:user
-\`\`\`
+```
 
 Modern Redis versions commonly use a compact **listpack** representation for small Hashes, and a **hashtable** representation when the Hash grows beyond configured thresholds.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Small Hash"] --> B["Compact listpack"]
     B -->|"Too many fields or large values"| C["Hashtable"]
-\`\`\`
+```
 
 Why switch?
 
@@ -127,10 +127,10 @@ Why switch?
 
 ### Inspect relevant configuration
 
-\`\`\`redis
+```redis
 CONFIG GET hash-max-listpack-entries
 CONFIG GET hash-max-listpack-value
-\`\`\`
+```
 
 These control thresholds on Redis versions that support these options. Older versions used different names and encodings.
 
@@ -146,19 +146,19 @@ Do not build correctness logic around a specific encoding.
 
 Redis Lists support operations at both ends:
 
-\`\`\`redis
+```redis
 LPUSH demo:notifications "Applied" "Interview" "Offer"
 OBJECT ENCODING demo:notifications
-\`\`\`
+```
 
 Modern Redis Lists commonly use a **quicklist** representation: a linked structure whose nodes contain packed groups of entries (typically listpacks).
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Quicklist node"] --> B["Packed values"]
     B --> C["Quicklist node"]
     C --> D["Packed values"]
-\`\`\`
+```
 
 This combines:
 - Efficient push/pop near the ends.
@@ -167,10 +167,10 @@ This combines:
 
 Configuration may include:
 
-\`\`\`redis
+```redis
 CONFIG GET list-max-listpack-size
 CONFIG GET list-compress-depth
-\`\`\`
+```
 
 Avoid changing these without benchmarks and understanding the impact on your workload.
 
@@ -178,17 +178,17 @@ Avoid changing these without benchmarks and understanding the impact on your wor
 
 A Set contains unique members.
 
-\`\`\`redis
+```redis
 SADD demo:numbers 1 2 3
 OBJECT ENCODING demo:numbers
-\`\`\`
+```
 
 A small Set of integer-compatible members may use an **intset** representation on versions/configurations that support it.
 
-\`\`\`redis
+```redis
 SADD demo:numbers hello
 OBJECT ENCODING demo:numbers
-\`\`\`
+```
 
 Adding a non-integer member can trigger conversion to a more general representation.
 
@@ -198,36 +198,36 @@ Modern Redis releases may also support compact listpack encodings for small Sets
 
 It only fits certain values and sizes. General-purpose membership and large Sets require other representations.
 
-**Key lesson:** A logical Set can be represented in multiple ways while \`SADD\`, \`SISMEMBER\`, and \`SCARD\` keep the same external behavior.
+**Key lesson:** A logical Set can be represented in multiple ways while `SADD`, `SISMEMBER`, and `SCARD` keep the same external behavior.
 
 ## 7. Sorted Sets: compact and scalable representations
 
 Sorted Sets combine unique members with numeric scores.
 
-\`\`\`redis
+```redis
 ZADD demo:ranking 100 user:42 85 user:99
 OBJECT ENCODING demo:ranking
-\`\`\`
+```
 
 For small Sorted Sets, Redis may use compact listpack encoding. Larger ones commonly use a **skiplist plus dictionary** arrangement.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Sorted Set"] --> B{"Small and compact?"}
     B -->|"Yes"| C["Listpack"]
     B -->|"No"| D["Skiplist + dictionary"]
     D --> E["Efficient score ranges"]
     D --> F["Efficient member lookup"]
-\`\`\`
+```
 
 The skiplist supports ordered traversal and range operations. The dictionary helps locate members.
 
 Inspect thresholds:
 
-\`\`\`redis
+```redis
 CONFIG GET zset-max-listpack-entries
 CONFIG GET zset-max-listpack-value
-\`\`\`
+```
 
 **Do not confuse the skiplist internal structure with a Redis Stream or List.** They solve different problems.
 
@@ -237,10 +237,10 @@ CONFIG GET zset-max-listpack-value
 
 Bitmaps operate on Strings. A bitmap's memory footprint depends strongly on its **highest offset**.
 
-\`\`\`redis
+```redis
 SETBIT demo:flags 7 1
 MEMORY USAGE demo:flags
-\`\`\`
+```
 
 A very large sparse offset can allocate substantial memory even when only one bit is set.
 
@@ -248,30 +248,30 @@ A very large sparse offset can allocate substantial memory even when only one bi
 
 HyperLogLog is a specialized approximate distinct-count structure backed by a String representation. Small sketches can be sparse; dense sketches use roughly 12 KiB plus overhead.
 
-\`\`\`redis
+```redis
 PFADD demo:hll user:1 user:2
 MEMORY USAGE demo:hll
-\`\`\`
+```
 
 ### Geospatial
 
 Redis GEO commands store location members using a Sorted Set with encoded geographic scores.
 
-\`\`\`redis
+```redis
 GEOADD demo:geo 77.5946 12.9716 bengaluru
 TYPE demo:geo
 OBJECT ENCODING demo:geo
-\`\`\`
+```
 
 ### Streams
 
 Streams use specialized structures to store ordered entries efficiently. Modern implementations use a radix tree with packed entry blocks, plus additional consumer-group state when applicable.
 
-\`\`\`redis
+```redis
 XADD demo:events * type ORDER_CREATED orderId 101
 TYPE demo:events
 OBJECT ENCODING demo:events
-\`\`\`
+```
 
 **Stream memory includes more than event payloads:** entry metadata, IDs, consumer groups, and pending entries also cost memory.
 
@@ -281,19 +281,19 @@ Imagine a Hash with many tiny fields. Its compact representation can be very eff
 
 After adding a large field value, Redis may convert it to a hashtable:
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Small Hash in listpack"] --> B["Add large field"]
     B --> C["Encoding conversion"]
     C --> D["More memory overhead"]
     D --> E["Potentially faster field access"]
-\`\`\`
+```
 
 The key did not change its logical type, yet its memory use can increase sharply.
 
 ### Practical experiment
 
-\`\`\`redis
+```redis
 DEL demo:hash
 HSET demo:hash a 1 b 2
 OBJECT ENCODING demo:hash
@@ -302,7 +302,7 @@ MEMORY USAGE demo:hash
 HSET demo:hash large "A value that may or may not cross this version's configured threshold"
 OBJECT ENCODING demo:hash
 MEMORY USAGE demo:hash
-\`\`\`
+```
 
 To guarantee a conversion experiment, first inspect the server's thresholds and then generate values larger than the configured limit in a local test.
 
@@ -310,23 +310,23 @@ To guarantee a conversion experiment, first inspect the server's thresholds and 
 
 ### Per-key memory
 
-\`\`\`redis
+```redis
 MEMORY USAGE demo:hash
 MEMORY USAGE demo:hash SAMPLES 0
-\`\`\`
+```
 
 ### Server-wide memory
 
-\`\`\`redis
+```redis
 INFO memory
-\`\`\`
+```
 
 Useful fields often include:
-- \`used_memory\`: memory allocated by Redis's allocator.
-- \`used_memory_peak\`: peak observed usage.
-- \`used_memory_rss\`: resident memory reported by the OS.
-- \`mem_fragmentation_ratio\`: an indicator that requires context.
-- \`maxmemory\`: configured eviction threshold.
+- `used_memory`: memory allocated by Redis's allocator.
+- `used_memory_peak`: peak observed usage.
+- `used_memory_rss`: resident memory reported by the OS.
+- `mem_fragmentation_ratio`: an indicator that requires context.
+- `maxmemory`: configured eviction threshold.
 
 **Warning:** A high fragmentation ratio does not automatically mean every byte is wasted. Small datasets, allocator behavior, shared memory, and workload patterns complicate interpretation.
 
@@ -334,12 +334,12 @@ Useful fields often include:
 
 Allocators reserve memory in blocks. After many allocations and frees, Redis may have memory reserved that is not immediately returned to the OS.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Allocate objects"] --> B["Delete some objects"]
     B --> C["Free gaps in allocated memory"]
     C --> D["RSS may stay elevated"]
-\`\`\`
+```
 
 Redis may support active defragmentation depending on build and configuration. Never enable it blindly without measuring CPU and memory impact.
 
@@ -349,14 +349,14 @@ A million separate tiny keys often use much more memory than just the raw bytes 
 
 Compare:
 
-\`\`\`text
+```text
 Option A:
 user:1:name -> Asha
 user:1:city -> Bengaluru
 
 Option B:
 user:1 -> Hash { name: Asha, city: Bengaluru }
-\`\`\`
+```
 
 For many small related fields, Hashes may save memory.
 
@@ -370,7 +370,7 @@ Compact encodings can save memory but sometimes require scanning or unpacking da
 
 General structures can use more memory but provide better performance for larger collections.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Choose representation"] --> B["Compact encoding"]
     A --> C["General encoding"]
@@ -378,7 +378,7 @@ flowchart TD
     B --> E["Potentially more scanning"]
     C --> F["Higher metadata overhead"]
     C --> G["Better scaling for large collections"]
-\`\`\`
+```
 
 Redis makes many of these choices automatically. Application developers should generally focus on **data type and access pattern**, then measure real memory and latency.
 
@@ -396,21 +396,21 @@ Redis makes many of these choices automatically. Application developers should g
 
 - Do not change encoding thresholds across production without testing.
 - Do not rely on one small sample key to predict millions of keys.
-- Do not assume \`MEMORY USAGE\` is identical to serialized payload size.
-- Do not use \`KEYS *\` for large production scans.
+- Do not assume `MEMORY USAGE` is identical to serialized payload size.
+- Do not use `KEYS *` for large production scans.
 - Do not trade away required atomicity or TTL behavior merely to save bytes.
 
 ## 14. Node.js memory-inspection script
 
 Install:
 
-\`\`\`bash
+```bash
 npm install redis
-\`\`\`
+```
 
 Use ESM.
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient({
@@ -450,7 +450,7 @@ try {
 } finally {
   if (redis.isOpen) await redis.quit();
 }
-\`\`\`
+```
 
 **Note:** The encoding output can differ across Redis versions. That is expected.
 
@@ -471,26 +471,26 @@ try {
 
 ## 16. Hands-on exercises
 
-1. Create a String and inspect \`TYPE\`, \`OBJECT ENCODING\`, and \`MEMORY USAGE\`.
+1. Create a String and inspect `TYPE`, `OBJECT ENCODING`, and `MEMORY USAGE`.
 2. Compare an integer String with a short text String.
 3. Append to a String and inspect whether encoding changes.
 4. Create a small Hash and inspect its encoding.
-5. Read Hash listpack thresholds from \`CONFIG GET\`.
+5. Read Hash listpack thresholds from `CONFIG GET`.
 6. Cross a Hash threshold in a disposable local instance.
 7. Create a List and inspect its encoding.
 8. Create an integer-only Set, then add a text member.
 9. Inspect a small Sorted Set.
 10. Compare memory usage of 100 separate String keys vs one Hash with 100 fields.
 11. Create a small Bitmap and estimate its raw bit storage.
-12. Inspect \`INFO memory\` before and after deleting demo keys.
-13. Explain why \`used_memory_rss\` can exceed \`used_memory\`.
+12. Inspect `INFO memory` before and after deleting demo keys.
+13. Explain why `used_memory_rss` can exceed `used_memory`.
 14. Run the Node.js inspection script.
 
 ## 17. Interview questions
 
 **Q1. What is an internal encoding?** Redis's representation of a logical value in memory.
 
-**Q2. Does TYPE show encoding?** No; use \`OBJECT ENCODING\`.
+**Q2. Does TYPE show encoding?** No; use `OBJECT ENCODING`.
 
 **Q3. Why does Redis use compact encodings?** To reduce memory overhead for small collections.
 
@@ -511,7 +511,7 @@ try {
 ## 18. Revision checklist
 
 - [ ] Logical type vs internal encoding
-- [ ] \`TYPE\`, \`OBJECT ENCODING\`, \`MEMORY USAGE\`
+- [ ] `TYPE`, `OBJECT ENCODING`, `MEMORY USAGE`
 - [ ] String integer / embstr / raw
 - [ ] Hash listpack / hashtable
 - [ ] List quicklist
