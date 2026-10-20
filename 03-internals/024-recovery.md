@@ -16,7 +16,7 @@ Possible causes:
 - VM or host failure.
 - Disk full.
 - Corrupted persistence files.
-- Accidental \`FLUSHALL\`.
+- Accidental `FLUSHALL`.
 - Network partition.
 - Credential/configuration mistake.
 - Data eviction.
@@ -24,7 +24,7 @@ Possible causes:
 
 The right recovery procedure depends on **what failed** and **what data Redis was responsible for**.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Redis unavailable / data missing"] --> B{"Failure category?"}
     B --> C["Process / host"]
@@ -35,7 +35,7 @@ flowchart TD
     D --> H["Validate backup and restore"]
     E --> I["Investigate and recover correct data"]
     F --> J["Restore connectivity / degrade safely"]
-\`\`\`
+```
 
 **Critical:** A Redis process restarting successfully does not prove that your application data is correct or complete.
 
@@ -59,13 +59,13 @@ Replication does not automatically prevent every data-loss scenario. A destructi
 
 Preserve recoverable copies of data, ideally outside the failure domain of the primary server.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     P["Primary Redis"] --> S["Local persistence"]
     P --> R["Replica"]
     S --> B["Protected external backup"]
     B --> T["Restore test"]
-\`\`\`
+```
 
 **Persistence, replication, and backups solve different problems.** Mature systems may need all three.
 
@@ -101,11 +101,11 @@ How quickly must service return?
 Example:
 - RTO of 10 minutes means the system should recover within 10 minutes.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Last recoverable state"] -->|"Potential data loss = RPO"| B["Failure"]
     B -->|"Recovery time = RTO"| C["Service restored"]
-\`\`\`
+```
 
 **Important:** An RPO/RTO target is not a guarantee provided automatically by selecting RDB or AOF. You must test the whole system.
 
@@ -120,7 +120,7 @@ Possible sequence:
 4. Applications reconnect.
 5. Health checks and data verification run.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant API as API
     participant R as Redis
@@ -132,7 +132,7 @@ sequenceDiagram
     Disk-->>R: Recovered dataset
     API->>R: Retry with bounded backoff
     R-->>API: Response
-\`\`\`
+```
 
 **Do not retry indefinitely inside HTTP requests.** Use bounded timeouts, backoff, circuit breakers, and safe fallbacks where appropriate.
 
@@ -157,13 +157,13 @@ Recovery needs:
 
 Suppose someone executes:
 
-\`\`\`redis
+```redis
 FLUSHALL
-\`\`\`
+```
 
 This removes all keys in the Redis instance. Depending on replication and persistence timing, the deletion can propagate or become persisted.
 
-**Never execute \`FLUSHALL\` as a recovery experiment against production.**
+**Never execute `FLUSHALL` as a recovery experiment against production.**
 
 Possible response:
 1. Stop the damaging automation or credential.
@@ -195,10 +195,10 @@ Symptoms may include:
 
 Tools include:
 
-\`\`\`bash
+```bash
 redis-check-rdb --help
 redis-check-aof --help
-\`\`\`
+```
 
 **Warning:** Repair tools may discard damaged or truncated portions. Never modify your only backup without preserving it first.
 
@@ -206,7 +206,7 @@ redis-check-aof --help
 
 A simplified model:
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Redis starts"] --> B{"AOF enabled and usable?"}
     B -->|"Yes"| C["Load AOF file set"]
@@ -216,7 +216,7 @@ flowchart TD
     C --> G["Validate restored state"]
     E --> G
     F --> G
-\`\`\`
+```
 
 **Nuance:** This is a conceptual diagram, not a promise that Redis automatically falls back to RDB whenever AOF is corrupt. When AOF is enabled, Redis generally prefers it, and an AOF load failure may prevent startup until you intervene. Actual behavior depends on version and configuration.
 
@@ -226,10 +226,10 @@ TTL information is stored with persisted data.
 
 Example:
 
-\`\`\`redis
+```redis
 SET demo:session active EX 60
 BGSAVE
-\`\`\`
+```
 
 If you restore after the expiration deadline, the session does not become valid again merely because it existed in the snapshot.
 
@@ -239,10 +239,10 @@ If you restore after the expiration deadline, the session does not become valid 
 
 With:
 
-\`\`\`conf
+```conf
 appendonly yes
 appendfsync everysec
-\`\`\`
+```
 
 Redis requests fsync approximately once per second. In a typical crash, the most recent second of writes may be at risk.
 
@@ -258,21 +258,21 @@ Do not promise “exactly one second maximum data loss” under every failure mo
 
 Imagine:
 
-\`\`\`text
+```text
 Primary Redis -> Replica Redis
-\`\`\`
+```
 
-If the primary receives an accidental \`DEL\` or \`FLUSHALL\`, the change can be replicated.
+If the primary receives an accidental `DEL` or `FLUSHALL`, the change can be replicated.
 
 If the primary crashes before a write reaches the replica, a promoted replica may not contain that write.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     P["Primary"] -->|"Asynchronous replication"| R["Replica"]
     P -->|"Accidental deletion"| D["Delete command"]
     D --> R
     R --> L["Replica also loses keys"]
-\`\`\`
+```
 
 **Important:** High availability reduces downtime for some failures; backups protect against a different class of failures.
 
@@ -282,7 +282,7 @@ Replication and failover are covered in Section 07.
 
 A practical architecture for a Node.js application:
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     API["Node.js / Next.js API"] --> DB[("PostgreSQL: source of truth")]
     API --> R[("Redis")]
@@ -292,7 +292,7 @@ flowchart TD
     B --> TEST["Isolated restore test"]
     DBB --> TEST
     API --> OBS["Monitoring and alerting"]
-\`\`\`
+```
 
 For critical Redis-backed jobs, also consider:
 - Transactional outbox.
@@ -317,13 +317,13 @@ Check:
 
 Useful diagnostics, if Redis is reachable:
 
-\`\`\`redis
+```redis
 PING
 INFO server
 INFO persistence
 INFO memory
 INFO replication
-\`\`\`
+```
 
 Do not expose sensitive configuration or credentials in incident logs.
 
@@ -383,7 +383,7 @@ Document:
 
 Create a local Compose file:
 
-\`\`\`yaml
+```yaml
 services:
   redis:
     image: redis:7
@@ -402,24 +402,24 @@ services:
 
 volumes:
   redis_recovery_lab:
-\`\`\`
+```
 
 Start:
 
-\`\`\`bash
+```bash
 docker compose up -d
 docker compose exec redis redis-cli SET demo:recovery "hello"
 docker compose exec redis redis-cli INFO persistence
-\`\`\`
+```
 
 Restart:
 
-\`\`\`bash
+```bash
 docker compose restart redis
 docker compose exec redis redis-cli GET demo:recovery
-\`\`\`
+```
 
-Expected: \`hello\`.
+Expected: `hello`.
 
 ### What this lab proves
 
@@ -433,7 +433,7 @@ It verifies a basic persistent-volume restart.
 - Zero data loss during sudden power failure.
 - Multi-node failover.
 
-**Do not use \`docker compose down -v\` if you want to preserve the volume.**
+**Do not use `docker compose down -v` if you want to preserve the volume.**
 
 ## 16. Backup verification strategy
 
@@ -465,7 +465,7 @@ These are illustrative cadences. Adjust them to the system's risk and compliance
 
 For a cache-only use case:
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["API request"] --> B{"Redis available?"}
     B -->|"Yes"| C["Read cache"]
@@ -474,7 +474,7 @@ flowchart TD
     D -->|"No"| F["Read PostgreSQL"]
     B -->|"No"| F
     F --> G["Return authoritative data"]
-\`\`\`
+```
 
 **Important:** A fallback can overload PostgreSQL if thousands of requests suddenly bypass Redis. Use bounded concurrency, circuit breakers, and request coalescing where appropriate.
 
@@ -484,13 +484,13 @@ For critical queues or distributed locks, **silently ignoring Redis failures can
 
 Install:
 
-\`\`\`bash
+```bash
 npm install redis
-\`\`\`
+```
 
 ESM example:
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient({
@@ -512,7 +512,7 @@ async function loadCompanyFromDatabase(companyId) {
 }
 
 async function getCompany(companyId) {
-  const key = \`cache:company:\${companyId}\`;
+  const key = `cache:company:\${companyId}`;
 
   if (redis.isReady) {
     try {
@@ -550,7 +550,7 @@ try {
 } finally {
   if (redis.isOpen) await redis.quit();
 }
-\`\`\`
+```
 
 **Production note:** This is a teaching example. Configure client command timeouts and offline-queue behavior appropriately for your library version, and protect the database from overload. A database fallback is suitable for rebuildable cache data, not automatically for locks, rate-limit enforcement, or payment coordination.
 
@@ -558,11 +558,11 @@ try {
 
 Suppose a worker processes an order event:
 
-\`\`\`text
+```text
 1. Read event from Redis Stream.
 2. Send email.
 3. Acknowledge event.
-\`\`\`
+```
 
 If the worker crashes between steps 2 and 3, the email may be sent twice after recovery.
 
@@ -589,7 +589,7 @@ If Redis loses the event before step 2, the email may never be sent.
 6. Using a mismatched Redis version for recovery.
 7. Copying only one multipart AOF fragment.
 8. Treating Docker volumes as offsite backups.
-9. Assuming \`appendfsync everysec\` is a universal hard one-second guarantee.
+9. Assuming `appendfsync everysec` is a universal hard one-second guarantee.
 10. Ignoring session expiry after restore.
 11. Never testing backups.
 12. Allowing retry storms to overwhelm PostgreSQL.
@@ -606,7 +606,7 @@ If Redis loses the event before step 2, the email may never be sent.
 5. Draw a recovery flow for an AOF-enabled instance.
 6. Start the Docker recovery lab and test restart.
 7. Identify which files and volumes need backup.
-8. Draft an incident runbook for accidental \`FLUSHALL\`.
+8. Draft an incident runbook for accidental `FLUSHALL`.
 9. List checks for validating a restored instance.
 10. Explain why Redis should not be your only record of completed payments.
 11. Design a PostgreSQL fallback for a cached endpoint.
