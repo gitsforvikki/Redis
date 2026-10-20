@@ -10,16 +10,16 @@
 
 Imagine an application transferring 10 points from user A to user B:
 
-\`\`\`redis
+```redis
 DECRBY points:user:A 10
 INCRBY points:user:B 10
-\`\`\`
+```
 
 If these are sent separately, another client can run commands between them. A client or connection failure can also leave you uncertain about what executed.
 
 A Redis transaction groups commands so Redis executes the queued operations **sequentially without other clients' commands interleaving during EXEC**.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant A as Client A
     participant R as Redis
@@ -32,7 +32,7 @@ sequenceDiagram
     R-->>A: Results
     B->>R: GET points:A
     R-->>B: Updated value
-\`\`\`
+```
 
 **Critical:** Redis transactions are not identical to SQL transactions. Redis does not provide automatic rollback of already executed commands when a runtime command fails.
 
@@ -40,37 +40,37 @@ sequenceDiagram
 
 ### MULTI — start queuing
 
-\`\`\`redis
+```redis
 MULTI
 SET demo:tx:name Asha
 INCR demo:tx:count
 EXEC
-\`\`\`
+```
 
-After \`MULTI\`, Redis replies \`QUEUED\` to valid queued commands. They are executed when \`EXEC\` is received.
+After `MULTI`, Redis replies `QUEUED` to valid queued commands. They are executed when `EXEC` is received.
 
 ### EXEC — run queued commands
 
-\`EXEC\` executes the queued operations as a non-interleaved sequence and returns their individual results.
+`EXEC` executes the queued operations as a non-interleaved sequence and returns their individual results.
 
 ### DISCARD — abandon the transaction
 
-\`\`\`redis
+```redis
 MULTI
 SET demo:tx:temporary hello
 DISCARD
 GET demo:tx:temporary
-\`\`\`
+```
 
-The \`SET\` never executes because the transaction was discarded.
+The `SET` never executes because the transaction was discarded.
 
-**Important:** \`DISCARD\` discards commands that are still queued; it does not undo a transaction that already ran.
+**Important:** `DISCARD` discards commands that are still queued; it does not undo a transaction that already ran.
 
 ## 3. What Redis transaction atomicity actually means
 
-During \`EXEC\`, commands from other clients do not run between the queued transaction commands.
+During `EXEC`, commands from other clients do not run between the queued transaction commands.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["Client A: MULTI"] --> B["Queue SET A"]
     B --> C["Queue INCR B"]
@@ -78,7 +78,7 @@ flowchart TD
     D --> E["Execute SET A"]
     E --> F["Execute INCR B"]
     F --> G["Return results"]
-\`\`\`
+```
 
 This is an important **isolation** property.
 
@@ -86,7 +86,7 @@ However:
 - A transaction can contain commands that fail at execution time.
 - Other queued commands may still succeed.
 - Redis does not automatically undo earlier successful commands.
-- Commands queued in a transaction cannot provide their results to your application before \`EXEC\`.
+- Commands queued in a transaction cannot provide their results to your application before `EXEC`.
 
 Therefore, **MULTI/EXEC is not enough for arbitrary conditional read-modify-write logic**.
 
@@ -98,37 +98,37 @@ Redis distinguishes errors that occur while **queuing** from errors that occur *
 
 Example: a command has invalid syntax or the wrong number of arguments.
 
-\`\`\`redis
+```redis
 MULTI
 SET demo:a 1
 SET demo:b
 EXEC
-\`\`\`
+```
 
-Redis detects the malformed command during queuing. Modern Redis aborts the transaction at \`EXEC\` if a queue-time error occurred.
+Redis detects the malformed command during queuing. Modern Redis aborts the transaction at `EXEC` if a queue-time error occurred.
 
 ### B. Runtime errors
 
 Example:
 
-\`\`\`redis
+```redis
 SET demo:number hello
 MULTI
 INCR demo:number
 SET demo:after success
 EXEC
-\`\`\`
+```
 
-The \`INCR\` fails at execution time because the value is not an integer, but the later \`SET\` can still execute.
+The `INCR` fails at execution time because the value is not an integer, but the later `SET` can still execute.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["MULTI"] --> B["Queue INCR on text"]
     B --> C["Queue SET another key"]
     C --> D["EXEC"]
     D --> E["INCR returns error"]
     E --> F["SET still executes"]
-\`\`\`
+```
 
 **Key interview fact:** Redis transactions do **not** provide SQL-style rollback on runtime errors.
 
@@ -136,7 +136,7 @@ flowchart TD
 
 Suppose two API servers both update a counter:
 
-\`\`\`text
+```text
 Initial balance = 100
 
 Client A: GET balance -> 100
@@ -144,11 +144,11 @@ Client B: GET balance -> 100
 Client A: SET balance 110
 Client B: SET balance 120
 Final balance = 120
-\`\`\`
+```
 
 Client A's update was lost.
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant A as Client A
     participant R as Redis
@@ -160,32 +160,32 @@ sequenceDiagram
     A->>R: SET balance 110
     B->>R: SET balance 120
     Note over R: Lost update
-\`\`\`
+```
 
 ### First solution: a single atomic command
 
 If you only need an increment:
 
-\`\`\`redis
+```redis
 INCRBY balance 10
-\`\`\`
+```
 
 Prefer a suitable single Redis command over a complicated transaction.
 
 ## 6. WATCH — optimistic concurrency control
 
-\`WATCH\` lets Redis detect whether watched keys changed before your transaction executes.
+`WATCH` lets Redis detect whether watched keys changed before your transaction executes.
 
 The pattern is:
 
-1. \`WATCH\` the relevant keys.
+1. `WATCH` the relevant keys.
 2. Read their current values.
 3. Calculate the desired update in your application.
-4. Queue commands with \`MULTI\`.
-5. Run \`EXEC\`.
+4. Queue commands with `MULTI`.
+5. Run `EXEC`.
 6. If a watched key changed, the transaction is aborted; retry after rereading.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["WATCH key"] --> B["GET current value"]
     B --> C["Calculate update"]
@@ -195,7 +195,7 @@ flowchart TD
     F -->|"Yes"| G["Abort and retry from fresh read"]
     G --> A
     F -->|"No"| H["Commit queued commands"]
-\`\`\`
+```
 
 ### Redis CLI example
 
@@ -203,58 +203,58 @@ Use a disposable instance and two terminals.
 
 **Terminal A:**
 
-\`\`\`redis
+```redis
 SET demo:stock 5
 WATCH demo:stock
 GET demo:stock
-\`\`\`
+```
 
 Before Terminal A commits, **Terminal B** runs:
 
-\`\`\`redis
+```redis
 DECR demo:stock
-\`\`\`
+```
 
 Now Terminal A:
 
-\`\`\`redis
+```redis
 MULTI
 SET demo:stock 4
 EXEC
-\`\`\`
+```
 
-Because the watched key changed, \`EXEC\` aborts instead of overwriting the newer value.
+Because the watched key changed, `EXEC` aborts instead of overwriting the newer value.
 
-The exact CLI display for an aborted \`EXEC\` depends on the client/version; it represents a null/aborted transaction result.
+The exact CLI display for an aborted `EXEC` depends on the client/version; it represents a null/aborted transaction result.
 
 ## 7. WATCH details that matter
 
-- \`WATCH\` applies to the **connection**.
+- `WATCH` applies to the **connection**.
 - It watches keys for changes, not individual Hash fields.
 - An expiration or eviction of a watched key can invalidate the transaction.
-- \`EXEC\` clears the watch state.
-- \`DISCARD\` clears the watch state.
-- \`UNWATCH\` explicitly clears watches.
+- `EXEC` clears the watch state.
+- `DISCARD` clears the watch state.
+- `UNWATCH` explicitly clears watches.
 - Your retry loop should be **bounded** and use backoff under contention.
 
-\`\`\`redis
+```redis
 WATCH demo:stock
 UNWATCH
-\`\`\`
+```
 
-**Production pitfall:** Do not mix unrelated concurrent \`WATCH\` transactions on the same connection. Use an isolated/dedicated client connection for a WATCH-based workflow.
+**Production pitfall:** Do not mix unrelated concurrent `WATCH` transactions on the same connection. Use an isolated/dedicated client connection for a WATCH-based workflow.
 
 ## 8. Node.js example: MULTI/EXEC
 
 Install:
 
-\`\`\`bash
+```bash
 npm install redis
-\`\`\`
+```
 
-Use ESM with \`"type": "module"\`.
+Use ESM with `"type": "module"`.
 
-\`\`\`js
+```js
 import { createClient } from "redis";
 
 const redis = createClient({
@@ -284,7 +284,7 @@ try {
 } finally {
   if (redis.isOpen) await redis.quit();
 }
-\`\`\`
+```
 
 This groups two writes. It does **not** validate that A had enough points before decrementing. You must enforce business rules separately.
 
@@ -292,7 +292,7 @@ This groups two writes. It does **not** validate that A had enough points before
 
 Imagine decrementing stock only if stock is positive.
 
-\`\`\`js
+```js
 import { createClient, WatchError } from "redis";
 
 const redis = createClient({
@@ -360,9 +360,9 @@ try {
 } finally {
   if (redis.isOpen) await redis.quit();
 }
-\`\`\`
+```
 
-**Version note:** This example uses the modern node-redis API. Confirm your installed major version's \`WatchError\` behavior and transaction methods.
+**Version note:** This example uses the modern node-redis API. Confirm your installed major version's `WatchError` behavior and transaction methods.
 
 ### What about high contention?
 
@@ -387,13 +387,13 @@ Even a correct Redis stock reservation does not make a PostgreSQL order transact
 - Avoid the network gap between read and write.
 - Must be carefully written to avoid long-running blocking operations.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Client"] --> B{"Conditional logic?"}
     B -->|"Simple single operation"| C["INCR / SET NX / HINCRBY"]
     B -->|"Read then write with retry"| D["WATCH + MULTI/EXEC"]
     B -->|"Atomic server-side logic"| E["Lua / Redis Function"]
-\`\`\`
+```
 
 We cover scripts and functions in Lesson 027.
 
@@ -414,15 +414,15 @@ A transaction queues commands for non-interleaved execution.
 
 **Node-redis API distinction:**
 
-\`\`\`js
+```js
 // Transaction
 await redis.multi().set("a", "1").set("b", "2").exec();
 
 // Non-transactional pipeline
 await redis.multi().set("a", "1").set("b", "2").execAsPipeline();
-\`\`\`
+```
 
-Do not confuse \`execAsPipeline()\` with \`exec()\`.
+Do not confuse `execAsPipeline()` with `exec()`.
 
 ## 12. Transactions and Redis Cluster
 
@@ -432,24 +432,24 @@ A transaction involving multiple keys must obey Cluster routing constraints; typ
 
 Hash tags can help:
 
-\`\`\`text
+```text
 wallet:{user42}:balance
 wallet:{user42}:reserved
-\`\`\`
+```
 
-Both keys share the \`user42\` hash tag.
+Both keys share the `user42` hash tag.
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["wallet:{user42}:balance"] --> H["Hash slot for user42"]
     B["wallet:{user42}:reserved"] --> H
-\`\`\`
+```
 
 **Warning:** Putting all users under one common hash tag would create a hot slot and defeat distribution. Colocate only keys that truly require multi-key operations.
 
 ## 13. Transaction durability is a separate concern
 
-\`EXEC\` returning successfully does not mean every write is permanently safe against every hardware or node failure.
+`EXEC` returning successfully does not mean every write is permanently safe against every hardware or node failure.
 
 Persistence settings matter:
 - RDB snapshots may lag behind current state.
@@ -467,13 +467,13 @@ Redis transactions and persistence answer different questions:
 
 Imagine:
 
-1. Client sends \`EXEC\`.
+1. Client sends `EXEC`.
 2. Redis executes the transaction.
 3. Connection drops before the reply arrives.
 
 The client may not know whether the transaction ran.
 
-Blindly retrying \`INCRBY\` or \`DECRBY\` can apply the operation twice.
+Blindly retrying `INCRBY` or `DECRBY` can apply the operation twice.
 
 For important workflows:
 - Use idempotency keys.
@@ -487,65 +487,65 @@ For important workflows:
 
 ### Atomic creation only if absent
 
-\`\`\`redis
+```redis
 SET signup:email:hash pending NX EX 300
-\`\`\`
+```
 
 This single command may be enough; no transaction required.
 
 ### Atomic counter
 
-\`\`\`redis
+```redis
 INCR api:requests
-\`\`\`
+```
 
 No transaction required.
 
 ### Related counter updates
 
-\`\`\`redis
+```redis
 MULTI
 INCR dashboard:applied
 DECR dashboard:draft
 EXEC
-\`\`\`
+```
 
 Grouping prevents interleaving during execution, but you still need to consider invalid negative values and persistence.
 
 ### Conditional stock reservation
 
-Use \`WATCH\` with retry or a server-side script, and keep authoritative stock consistency in the primary database.
+Use `WATCH` with retry or a server-side script, and keep authoritative stock consistency in the primary database.
 
 ## 16. Common mistakes
 
 1. Assuming Redis transactions roll back on runtime errors.
-2. Expecting results of queued commands before \`EXEC\`.
-3. Confusing \`MULTI/EXEC\` with a pipeline.
-4. Assuming \`MULTI/EXEC\` alone prevents lost updates from earlier application reads.
-5. Forgetting \`WATCH\` and retry logic.
+2. Expecting results of queued commands before `EXEC`.
+3. Confusing `MULTI/EXEC` with a pipeline.
+4. Assuming `MULTI/EXEC` alone prevents lost updates from earlier application reads.
+5. Forgetting `WATCH` and retry logic.
 6. Sharing a WATCH connection across unrelated concurrent requests.
 7. Retrying a non-idempotent transaction after an uncertain timeout.
 8. Assuming transactions span Redis and PostgreSQL.
 9. Ignoring Redis Cluster hash-slot restrictions.
 10. Using long-running scripts to solve simple problems.
-11. Treating \`EXEC\` success as proof of durable storage.
+11. Treating `EXEC` success as proof of durable storage.
 12. Forgetting business invariant checks such as stock cannot become negative.
 
 ## 17. Hands-on exercises
 
-1. Run \`MULTI\`, queue two \`SET\` commands, and \`EXEC\`.
-2. Queue a command and then \`DISCARD\`.
+1. Run `MULTI`, queue two `SET` commands, and `EXEC`.
+2. Queue a command and then `DISCARD`.
 3. Demonstrate a queue-time syntax error.
-4. Demonstrate a runtime \`WRONGTYPE\` error.
+4. Demonstrate a runtime `WRONGTYPE` error.
 5. Confirm that a later valid command can execute after a runtime error.
 6. Simulate a lost update with two clients.
-7. Replace a GET/SET counter update with \`INCRBY\`.
-8. Use two terminals to test \`WATCH\` abort behavior.
+7. Replace a GET/SET counter update with `INCRBY`.
+8. Use two terminals to test `WATCH` abort behavior.
 9. Write a bounded WATCH retry loop in Node.js.
 10. Explain why WATCH needs an isolated connection.
-11. Compare \`exec()\` and \`execAsPipeline()\`.
+11. Compare `exec()` and `execAsPipeline()`.
 12. Design Cluster-compatible transaction keys with hash tags.
-13. Explain what happens when the network drops after \`EXEC\`.
+13. Explain what happens when the network drops after `EXEC`.
 14. Choose between a single command, transaction, WATCH, and Lua for five use cases.
 
 ## 18. Interview questions
